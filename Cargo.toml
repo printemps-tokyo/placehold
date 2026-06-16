@@ -1,0 +1,32 @@
+[package]
+name = "placehold"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Generate placeholder images locally — solid color with the size label. Fast Rust CLI."
+authors = ["printemps.tokyo <develop@printemps.tokyo>"]
+repository = "https://github.com/printemps-tokyo/placehold"
+homepage = "https://github.com/printemps-tokyo/placehold"
+readme = "README.md"
+keywords = ["placeholder", "image", "cli", "mockup", "dummy"]
+categories = ["command-line-utilities", "multimedia::images"]
+
+[[bin]]
+name = "placehold"
+path = "src/main.rs"
+
+[lib]
+name = "placehold"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+font8x8 = "0.3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
