@@ -6,7 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use image::DynamicImage;
 
-use placehold::{default_filename, ext_for_output, parse_color, parse_size, render, Size};
+use placehold::{
+    default_filename, ext_for_output, parse_color, parse_size, render, render_checker, Size,
+};
 
 /// Generate placeholder images locally (solid color + size label).
 #[derive(Parser, Debug)]
@@ -33,8 +35,16 @@ struct Cli {
     no_text: bool,
 
     /// Output format / extension (used for default filenames).
-    #[arg(long, value_parser = ["png", "jpg"], default_value = "png")]
+    #[arg(long, value_parser = ["png", "jpg", "webp"], default_value = "png")]
     format: String,
+
+    /// Background pattern.
+    #[arg(long, value_parser = ["solid", "checker"], default_value = "solid")]
+    pattern: String,
+
+    /// Checkerboard cell size in pixels (default: auto).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=4096))]
+    cell: Option<u32>,
 
     /// Fixed text scale (default: chosen automatically to fit).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=256))]
@@ -79,7 +89,11 @@ fn main() -> Result<()> {
             )
         };
 
-        let img = render(size, bg, fg, label.as_deref(), cli.scale);
+        let img = if cli.pattern == "checker" {
+            render_checker(size, bg, fg, label.as_deref(), cli.scale, cli.cell)
+        } else {
+            render(size, bg, fg, label.as_deref(), cli.scale)
+        };
         let (path, ext) = resolve_output(&cli, size)?;
         save_image(&img, &path, &ext)
             .with_context(|| format!("failed to write {}", path.display()))?;

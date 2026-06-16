@@ -60,9 +60,9 @@ pub fn ext_for_output(path: &std::path::Path) -> Result<String> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase());
     match ext.as_deref() {
-        Some("png") | Some("jpg") | Some("jpeg") => Ok(ext.unwrap()),
+        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") => Ok(ext.unwrap()),
         Some(other) => Err(anyhow!(
-            "unsupported output extension: .{other} (use .png/.jpg)"
+            "unsupported output extension: .{other} (use .png/.jpg/.webp)"
         )),
         None => Err(anyhow!("output path has no extension: {}", path.display())),
     }
@@ -134,13 +134,61 @@ pub fn render(
     scale: Option<u32>,
 ) -> RgbaImage {
     let mut img = RgbaImage::from_pixel(size.width, size.height, bg);
+    draw_label(&mut img, size, fg, text, scale);
+    img
+}
+
+/// Derive a second, visibly different checkerboard color from `bg`: blend
+/// toward black for light backgrounds, toward white for dark ones.
+pub fn alt_color(bg: Rgba<u8>) -> Rgba<u8> {
+    let [r, g, b, a] = bg.0;
+    // Perceptual-ish luminance (0..255).
+    let lum = (r as u32 * 299 + g as u32 * 587 + b as u32 * 114) / 1000;
+    let mix = |c: u8, toward: u8| -> u8 {
+        // Blend 18% toward the target.
+        ((c as u32 * 82 + toward as u32 * 18) / 100) as u8
+    };
+    let toward = if lum >= 128 { 0 } else { 255 };
+    Rgba([mix(r, toward), mix(g, toward), mix(b, toward), a])
+}
+
+/// Render a placeholder with a checkerboard background (`bg` + a derived shade)
+/// and the centered label. `cell` is the square size in pixels (auto when None).
+pub fn render_checker(
+    size: Size,
+    bg: Rgba<u8>,
+    fg: Rgba<u8>,
+    text: Option<&str>,
+    scale: Option<u32>,
+    cell: Option<u32>,
+) -> RgbaImage {
+    let alt = alt_color(bg);
+    let cell = cell
+        .filter(|&c| c > 0)
+        .unwrap_or_else(|| (size.width.min(size.height) / 8).max(8));
+    let mut img = RgbaImage::new(size.width, size.height);
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        let on = ((x / cell) + (y / cell)).is_multiple_of(2);
+        *px = if on { bg } else { alt };
+    }
+    draw_label(&mut img, size, fg, text, scale);
+    img
+}
+
+/// Draw the centered label (if any) onto an existing image.
+fn draw_label(
+    img: &mut RgbaImage,
+    size: Size,
+    fg: Rgba<u8>,
+    text: Option<&str>,
+    scale: Option<u32>,
+) {
     if let Some(t) = text {
         if !t.is_empty() {
             let s = scale.unwrap_or_else(|| auto_scale(size, t.chars().count() as u32));
-            draw_text_centered(&mut img, t, fg, s.max(1));
+            draw_text_centered(img, t, fg, s.max(1));
         }
     }
-    img
 }
 
 /// Draw `text` centered using the 8x8 bitmap font, scaled by `scale`.
@@ -285,6 +333,29 @@ mod tests {
         );
         assert!(big >= small);
         assert!(small >= 1);
+    }
+
+    #[test]
+    fn alt_color_contrasts_with_background() {
+        // Light background -> darker alt; dark background -> lighter alt.
+        let light = alt_color(Rgba([200, 200, 200, 255]));
+        assert!(light.0[0] < 200);
+        let dark = alt_color(Rgba([20, 20, 20, 255]));
+        assert!(dark.0[0] > 20);
+    }
+
+    #[test]
+    fn render_checker_uses_two_colors() {
+        let s = Size {
+            width: 32,
+            height: 32,
+        };
+        let bg = Rgba([200, 200, 200, 255]);
+        let img = render_checker(s, bg, Rgba([0, 0, 0, 255]), None, None, Some(8));
+        let alt = alt_color(bg);
+        // (0,0) is the bg color; the neighboring cell at (8,0) is the alt color.
+        assert_eq!(*img.get_pixel(0, 0), bg);
+        assert_eq!(*img.get_pixel(8, 0), alt);
     }
 
     #[test]

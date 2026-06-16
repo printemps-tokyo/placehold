@@ -34,6 +34,8 @@ placehold 515x230 --bg "#c8c8c8"  # custom background
 placehold 1200x630 --text "OGP"   # custom label
 placehold 64 --no-text            # solid color only
 placehold 300x150 --format jpg
+placehold 800x600 --pattern checker        # checkerboard background
+placehold 512 --format webp
 placehold 320x240 640x480 800x600 --out-dir mockups   # batch
 placehold 200x200 -o avatar.png   # explicit output path (single size)
 ```
@@ -50,7 +52,9 @@ is printed to stderr.
 | `--fg <hex>` | Label color (default `ffffff`) |
 | `--text <str>` | Override the centered label (default: the dimensions) |
 | `--no-text` | Draw a solid color with no label |
-| `--format <png\|jpg>` | Output format (default `png`) |
+| `--format <png\|jpg\|webp>` | Output format (default `png`) |
+| `--pattern <solid\|checker>` | Background pattern (default `solid`) |
+| `--cell <n>` | Checkerboard cell size in pixels (default: auto) |
 | `--scale <n>` | Fixed label scale (default: auto-fit) |
 | `-o, --output <file>` | Output path (single size only) |
 | `--out-dir <dir>` | Directory to write into (default: current directory) |
