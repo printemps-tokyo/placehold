@@ -7,8 +7,8 @@ use clap::Parser;
 use image::DynamicImage;
 
 use placehold::{
-    default_filename, ext_for_output, parse_color, parse_size, render, render_checker, render_diag,
-    render_gradient, Size,
+    apply_border, apply_radius, default_filename, ext_for_output, parse_color, parse_size, render,
+    render_checker, render_diag, render_gradient, Size,
 };
 
 /// Generate placeholder images locally (solid color + size label).
@@ -47,6 +47,18 @@ struct Cli {
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=4096))]
     cell: Option<u32>,
 
+    /// Rounded-corner radius in pixels (transparent corners; use png/webp).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(0..=10000))]
+    radius: Option<u32>,
+
+    /// Border thickness in pixels.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(0..=10000))]
+    border: Option<u32>,
+
+    /// Border color (hex; default: the label color).
+    #[arg(long)]
+    border_color: Option<String>,
+
     /// Fixed text scale (default: chosen automatically to fit).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=256))]
     scale: Option<u32>,
@@ -65,6 +77,16 @@ fn main() -> Result<()> {
 
     let bg = parse_color(&cli.bg)?;
     let fg = parse_color(&cli.fg)?;
+    // Border color defaults to the label color.
+    let border_color = match &cli.border_color {
+        Some(hex) => parse_color(hex)?,
+        None => fg,
+    };
+    if cli.radius.is_some_and(|r| r > 0) && cli.format == "jpg" && cli.output.is_none() {
+        eprintln!(
+            "placehold: note: --radius needs alpha; jpg corners will be opaque (use png/webp)"
+        );
+    }
 
     if cli.output.is_some() && cli.sizes.len() > 1 {
         return Err(anyhow!("--output cannot be used with multiple sizes"));
@@ -90,12 +112,18 @@ fn main() -> Result<()> {
             )
         };
 
-        let img = match cli.pattern.as_str() {
+        let mut img = match cli.pattern.as_str() {
             "checker" => render_checker(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
             "diag" => render_diag(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
             "gradient" => render_gradient(size, bg, fg, label.as_deref(), cli.scale),
             _ => render(size, bg, fg, label.as_deref(), cli.scale),
         };
+        if let Some(t) = cli.border {
+            apply_border(&mut img, t, border_color);
+        }
+        if let Some(r) = cli.radius {
+            apply_radius(&mut img, r);
+        }
         let (path, ext) = resolve_output(&cli, size)?;
         save_image(&img, &path, &ext)
             .with_context(|| format!("failed to write {}", path.display()))?;

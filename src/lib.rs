@@ -233,6 +233,66 @@ pub fn render_gradient(
     img
 }
 
+/// Whether pixel `(x, y)` lies inside a `w` x `h` rounded rectangle with corner
+/// radius `r`. Pixels in a corner region beyond the corner circle are outside.
+pub fn is_inside_rounded(x: u32, y: u32, w: u32, h: u32, r: u32) -> bool {
+    if w == 0 || h == 0 {
+        return false;
+    }
+    let r = r.min(w / 2).min(h / 2);
+    if r == 0 {
+        return true;
+    }
+    // Corner circle centers (in pixel coordinates).
+    let (cx, cy) = (
+        if x < r {
+            r
+        } else if x >= w - r {
+            w - 1 - r
+        } else {
+            x // straight edge column: always inside
+        },
+        if y < r {
+            r
+        } else if y >= h - r {
+            h - 1 - r
+        } else {
+            y
+        },
+    );
+    let dx = x as i64 - cx as i64;
+    let dy = y as i64 - cy as i64;
+    dx * dx + dy * dy <= (r as i64) * (r as i64)
+}
+
+/// Clear (make transparent) the pixels outside a rounded rectangle of radius
+/// `r`. A no-op when `r` is 0.
+pub fn apply_radius(img: &mut RgbaImage, r: u32) {
+    if r == 0 {
+        return;
+    }
+    let (w, h) = (img.width(), img.height());
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        if !is_inside_rounded(x, y, w, h, r) {
+            *px = Rgba([0, 0, 0, 0]);
+        }
+    }
+}
+
+/// Draw a `thickness`-pixel border of `color` around the image edges.
+pub fn apply_border(img: &mut RgbaImage, thickness: u32, color: Rgba<u8>) {
+    if thickness == 0 {
+        return;
+    }
+    let (w, h) = (img.width(), img.height());
+    let t = thickness.min(w.div_ceil(2)).min(h.div_ceil(2));
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        if x < t || y < t || x >= w - t || y >= h - t {
+            *px = color;
+        }
+    }
+}
+
 /// Draw the centered label (if any) onto an existing image.
 fn draw_label(
     img: &mut RgbaImage,
@@ -435,6 +495,35 @@ mod tests {
         // Stripe index (x+y)/cell alternates: (0,0) is bg, (4,0) is alt.
         assert_eq!(*img.get_pixel(0, 0), bg);
         assert_eq!(*img.get_pixel(4, 0), alt_color(bg));
+    }
+
+    #[test]
+    fn rounded_corners_excluded() {
+        // 20x20, radius 6: the very corner (0,0) is outside; the center is inside.
+        assert!(!is_inside_rounded(0, 0, 20, 20, 6));
+        assert!(is_inside_rounded(10, 10, 20, 20, 6));
+        // A straight edge midpoint is inside.
+        assert!(is_inside_rounded(10, 0, 20, 20, 6));
+        // radius 0 -> everything inside.
+        assert!(is_inside_rounded(0, 0, 20, 20, 0));
+    }
+
+    #[test]
+    fn apply_radius_makes_corner_transparent() {
+        let mut img = RgbaImage::from_pixel(20, 20, Rgba([10, 20, 30, 255]));
+        apply_radius(&mut img, 6);
+        assert_eq!(img.get_pixel(0, 0).0[3], 0); // corner cleared
+        assert_eq!(*img.get_pixel(10, 10), Rgba([10, 20, 30, 255])); // center kept
+    }
+
+    #[test]
+    fn apply_border_paints_the_edge() {
+        let mut img = RgbaImage::from_pixel(20, 20, Rgba([0, 0, 0, 255]));
+        let red = Rgba([255, 0, 0, 255]);
+        apply_border(&mut img, 2, red);
+        assert_eq!(*img.get_pixel(0, 0), red);
+        assert_eq!(*img.get_pixel(1, 10), red);
+        assert_eq!(*img.get_pixel(10, 10), Rgba([0, 0, 0, 255])); // interior untouched
     }
 
     #[test]
