@@ -339,11 +339,45 @@ fn draw_label(
     }
 }
 
-/// Draw one line horizontally centered at the given top `y`, using the 8x8 font.
+/// Draw the centered label with an optional drop shadow.
+pub fn draw_shadowed_label(
+    img: &mut RgbaImage,
+    size: Size,
+    fg: Rgba<u8>,
+    shadow: Option<Rgba<u8>>,
+    text: Option<&str>,
+    scale: Option<u32>,
+) {
+    let Some(t) = text else { return };
+    if t.is_empty() {
+        return;
+    }
+    let lines = split_label(t);
+    let max_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u32;
+    let s = scale
+        .unwrap_or_else(|| auto_scale_block(size, max_len, lines.len() as u32))
+        .max(1);
+    let block_h = lines.len() as i64 * 8 * s as i64;
+    let oy = (img.height() as i64 - block_h) / 2;
+    let off = (s as i64 / 4).max(1);
+    for (i, line) in lines.iter().enumerate() {
+        let line_y = oy + i as i64 * 8 * s as i64;
+        if let Some(sh) = shadow {
+            draw_line(img, line, sh, s, off, line_y + off);
+        }
+        draw_line(img, line, fg, s, 0, line_y);
+    }
+}
+
+/// Draw one line horizontally centered (plus a `dx` x-offset) at top `y`.
 fn draw_line_centered(img: &mut RgbaImage, text: &str, fg: Rgba<u8>, scale: u32, oy: i64) {
+    draw_line(img, text, fg, scale, 0, oy);
+}
+
+fn draw_line(img: &mut RgbaImage, text: &str, fg: Rgba<u8>, scale: u32, dx: i64, oy: i64) {
     let chars: Vec<char> = text.chars().collect();
     let text_w = chars.len() as i64 * 8 * scale as i64;
-    let ox = (img.width() as i64 - text_w) / 2;
+    let ox = (img.width() as i64 - text_w) / 2 + dx;
 
     for (ci, &ch) in chars.iter().enumerate() {
         let glyph = glyph_for(ch);
@@ -510,6 +544,21 @@ mod tests {
         );
         assert!(two <= one);
         assert!(two >= 1);
+    }
+
+    #[test]
+    fn shadowed_label_draws_shadow_and_text() {
+        let s = Size {
+            width: 120,
+            height: 60,
+        };
+        let mut img = RgbaImage::from_pixel(s.width, s.height, Rgba([0, 0, 0, 255]));
+        let fg = Rgba([255, 255, 255, 255]);
+        let shadow = Rgba([255, 0, 0, 255]);
+        draw_shadowed_label(&mut img, s, fg, Some(shadow), Some("X"), Some(4));
+        // Both the foreground (white) and the shadow (red) appear somewhere.
+        assert!(img.pixels().any(|p| *p == fg));
+        assert!(img.pixels().any(|p| *p == shadow));
     }
 
     #[test]

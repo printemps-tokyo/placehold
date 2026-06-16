@@ -7,8 +7,8 @@ use clap::Parser;
 use image::DynamicImage;
 
 use placehold::{
-    apply_border, apply_radius, default_filename, ext_for_output, parse_color, parse_size, render,
-    render_checker, render_diag, render_gradient, Size,
+    apply_border, apply_radius, default_filename, draw_shadowed_label, ext_for_output, parse_color,
+    parse_size, render, render_checker, render_diag, render_gradient, Size,
 };
 
 /// Generate placeholder images locally (solid color + size label).
@@ -59,6 +59,14 @@ struct Cli {
     #[arg(long)]
     border_color: Option<String>,
 
+    /// Draw a drop shadow under the label.
+    #[arg(long)]
+    shadow: bool,
+
+    /// Shadow color (hex; default: black). Implies --shadow.
+    #[arg(long)]
+    shadow_color: Option<String>,
+
     /// Fixed text scale (default: chosen automatically to fit).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=256))]
     scale: Option<u32>,
@@ -81,6 +89,15 @@ fn main() -> Result<()> {
     let border_color = match &cli.border_color {
         Some(hex) => parse_color(hex)?,
         None => fg,
+    };
+    // Shadow color (black by default); --shadow-color implies --shadow.
+    let shadow_color = if cli.shadow || cli.shadow_color.is_some() {
+        Some(match &cli.shadow_color {
+            Some(hex) => parse_color(hex)?,
+            None => image::Rgba([0, 0, 0, 255]),
+        })
+    } else {
+        None
     };
     if cli.radius.is_some_and(|r| r > 0) && cli.format == "jpg" && cli.output.is_none() {
         eprintln!(
@@ -112,12 +129,22 @@ fn main() -> Result<()> {
             )
         };
 
+        // Render the background without the label, then draw the label so an
+        // optional drop shadow can sit under the text.
         let mut img = match cli.pattern.as_str() {
-            "checker" => render_checker(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
-            "diag" => render_diag(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
-            "gradient" => render_gradient(size, bg, fg, label.as_deref(), cli.scale),
-            _ => render(size, bg, fg, label.as_deref(), cli.scale),
+            "checker" => render_checker(size, bg, fg, None, cli.scale, cli.cell),
+            "diag" => render_diag(size, bg, fg, None, cli.scale, cli.cell),
+            "gradient" => render_gradient(size, bg, fg, None, cli.scale),
+            _ => render(size, bg, fg, None, cli.scale),
         };
+        draw_shadowed_label(
+            &mut img,
+            size,
+            fg,
+            shadow_color,
+            label.as_deref(),
+            cli.scale,
+        );
         if let Some(t) = cli.border {
             apply_border(&mut img, t, border_color);
         }

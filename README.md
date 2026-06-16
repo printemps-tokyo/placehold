@@ -39,6 +39,8 @@ placehold 800x600 --pattern checker        # checkerboard background
 placehold 800x600 --pattern diag           # diagonal stripes
 placehold 800x600 --pattern gradient       # left-to-right gradient
 placehold 600x400 --radius 24 --border 4   # rounded corners + border (png)
+placehold 800x450 --shadow                 # drop shadow under the label
+placehold 800x450 --shadow-color "#333"    # ...with a custom shadow color
 placehold 512 --format webp
 placehold 320x240 640x480 800x600 --out-dir mockups   # batch
 placehold 200x200 -o avatar.png   # explicit output path (single size)
@@ -62,6 +64,8 @@ is printed to stderr.
 | `--radius <n>` | Rounded-corner radius in pixels (transparent corners; use png/webp) |
 | `--border <n>` | Border thickness in pixels |
 | `--border-color <hex>` | Border color (default: the label color) |
+| `--shadow` | Draw a drop shadow under the label |
+| `--shadow-color <hex>` | Shadow color (default: black; implies `--shadow`) |
 | `--scale <n>` | Fixed label scale (default: auto-fit) |
 | `-o, --output <file>` | Output path (single size only) |
 | `--out-dir <dir>` | Directory to write into (default: current directory) |
