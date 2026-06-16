@@ -19,6 +19,10 @@ pub struct Size {
 /// Upper bound on a dimension, to reject absurd inputs early.
 pub const MAX_DIM: u32 = 20_000;
 
+/// Upper bound on total pixels, to avoid huge single allocations (an RGBA
+/// buffer is 4 bytes per pixel, so 100 MP is ~400 MB).
+pub const MAX_PIXELS: u64 = 100_000_000;
+
 /// Parse a size string: "WxH" (e.g. "640x480") or a single "N" meaning NxN.
 pub fn parse_size(input: &str) -> Result<Size> {
     let s = input.trim().to_ascii_lowercase();
@@ -40,7 +44,28 @@ pub fn parse_size(input: &str) -> Result<Size> {
             "size too large (max {MAX_DIM} per side): {input:?}"
         ));
     }
+    if width as u64 * height as u64 > MAX_PIXELS {
+        return Err(anyhow!(
+            "size too large (max {MAX_PIXELS} total pixels): {input:?}"
+        ));
+    }
     Ok(Size { width, height })
+}
+
+/// Validate and normalize an output file extension to a supported format.
+/// Returns "png", "jpg", or "jpeg" (lowercased); errors otherwise.
+pub fn ext_for_output(path: &std::path::Path) -> Result<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("png") | Some("jpg") | Some("jpeg") => Ok(ext.unwrap()),
+        Some(other) => Err(anyhow!(
+            "unsupported output extension: .{other} (use .png/.jpg)"
+        )),
+        None => Err(anyhow!("output path has no extension: {}", path.display())),
+    }
 }
 
 /// Parse a hex color ("#aabbcc", "aabbcc", "#abc", "abc") into opaque RGBA.
@@ -194,6 +219,19 @@ mod tests {
         assert!(parse_size("0x10").is_err());
         assert!(parse_size("axb").is_err());
         assert!(parse_size("99999x1").is_err());
+        // Total-pixel cap: 20000x20000 is within the per-side cap but rejected.
+        assert!(parse_size("20000x20000").is_err());
+        assert!(parse_size("10000x10000").is_ok());
+    }
+
+    #[test]
+    fn ext_for_output_validates() {
+        use std::path::Path;
+        assert_eq!(ext_for_output(Path::new("a/b.PNG")).unwrap(), "png");
+        assert_eq!(ext_for_output(Path::new("x.jpg")).unwrap(), "jpg");
+        assert_eq!(ext_for_output(Path::new("x.jpeg")).unwrap(), "jpeg");
+        assert!(ext_for_output(Path::new("x.gif")).is_err());
+        assert!(ext_for_output(Path::new("noext")).is_err());
     }
 
     #[test]

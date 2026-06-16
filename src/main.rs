@@ -1,12 +1,12 @@
 //! Command-line entry point for placehold.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use image::DynamicImage;
 
-use placehold::{default_filename, parse_color, parse_size, render, Size};
+use placehold::{default_filename, ext_for_output, parse_color, parse_size, render, Size};
 
 /// Generate placeholder images locally (solid color + size label).
 #[derive(Parser, Debug)]
@@ -32,15 +32,15 @@ struct Cli {
     #[arg(long)]
     no_text: bool,
 
-    /// Output format / extension.
+    /// Output format / extension (used for default filenames).
     #[arg(long, value_parser = ["png", "jpg"], default_value = "png")]
     format: String,
 
     /// Fixed text scale (default: chosen automatically to fit).
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=256))]
     scale: Option<u32>,
 
-    /// Output file (single size only). Default: "<W>x<H>[_<bg>].<ext>".
+    /// Output file (single size only). Its extension sets the format.
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -54,10 +54,12 @@ fn main() -> Result<()> {
 
     let bg = parse_color(&cli.bg)?;
     let fg = parse_color(&cli.fg)?;
-    let ext = cli.format.as_str();
 
     if cli.output.is_some() && cli.sizes.len() > 1 {
         return Err(anyhow!("--output cannot be used with multiple sizes"));
+    }
+    if cli.output.is_some() && cli.out_dir.is_some() {
+        return Err(anyhow!("--output and --out-dir cannot be used together"));
     }
 
     if let Some(dir) = &cli.out_dir {
@@ -78,8 +80,8 @@ fn main() -> Result<()> {
         };
 
         let img = render(size, bg, fg, label.as_deref(), cli.scale);
-        let path = output_path(&cli, size, ext);
-        save_image(&img, &path, ext)
+        let (path, ext) = resolve_output(&cli, size)?;
+        save_image(&img, &path, &ext)
             .with_context(|| format!("failed to write {}", path.display()))?;
         eprintln!(
             "placehold: wrote {} ({}x{})",
@@ -92,18 +94,24 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn output_path(cli: &Cli, size: Size, ext: &str) -> PathBuf {
+/// Resolve the output path and the encoder extension for one size.
+/// With --output the extension comes from the given path (so the file's name
+/// and contents agree); otherwise it is the default filename + --format.
+fn resolve_output(cli: &Cli, size: Size) -> Result<(PathBuf, String)> {
     if let Some(out) = &cli.output {
-        return out.clone();
+        let ext = ext_for_output(out)?;
+        return Ok((out.clone(), ext));
     }
-    let name = default_filename(size, Some(&cli.bg), ext);
-    match &cli.out_dir {
+    let ext = cli.format.clone();
+    let name = default_filename(size, Some(&cli.bg), &ext);
+    let path = match &cli.out_dir {
         Some(dir) => dir.join(name),
         None => PathBuf::from(name),
-    }
+    };
+    Ok((path, ext))
 }
 
-fn save_image(img: &image::RgbaImage, path: &std::path::Path, ext: &str) -> Result<()> {
+fn save_image(img: &image::RgbaImage, path: &Path, ext: &str) -> Result<()> {
     if ext == "jpg" || ext == "jpeg" {
         // JPEG has no alpha channel; drop it before encoding.
         DynamicImage::ImageRgba8(img.clone()).to_rgb8().save(path)?;
