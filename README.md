@@ -32,6 +32,7 @@ placehold 640x480                 # -> 640x480_959595.png
 placehold 100                     # square -> 100x100_959595.png
 placehold 515x230 --bg "#c8c8c8"  # custom background
 placehold 1200x630 --text "OGP"   # custom label
+placehold 600x400 --text "HELLO\nWORLD"    # multi-line label
 placehold 64 --no-text            # solid color only
 placehold 300x150 --format jpg
 placehold 800x600 --pattern checker        # checkerboard background
@@ -53,7 +54,7 @@ is printed to stderr.
 | `<sizes>...` | One or more sizes: `WxH` (e.g. `640x480`) or `N` (meaning `NxN`) |
 | `--bg <hex>` | Background color, e.g. `959595` or `#abc` (default `959595`) |
 | `--fg <hex>` | Label color (default `ffffff`) |
-| `--text <str>` | Override the centered label (default: the dimensions) |
+| `--text <str>` | Override the centered label (use `\n` for multiple lines) |
 | `--no-text` | Draw a solid color with no label |
 | `--format <png\|jpg\|webp>` | Output format (default `png`) |
 | `--pattern <solid\|checker\|diag\|gradient>` | Background pattern (default `solid`) |

@@ -293,7 +293,28 @@ pub fn apply_border(img: &mut RgbaImage, thickness: u32, color: Rgba<u8>) {
     }
 }
 
-/// Draw the centered label (if any) onto an existing image.
+/// Split a label into lines, treating a literal `\n` (backslash-n) or a real
+/// newline as a line break.
+pub fn split_label(text: &str) -> Vec<String> {
+    text.replace("\\n", "\n")
+        .split('\n')
+        .map(str::to_string)
+        .collect()
+}
+
+/// Choose the largest scale so a multi-line label block fits within ~80% of the
+/// image: width by the longest line, height by the line count.
+pub fn auto_scale_block(size: Size, max_line_len: u32, lines: u32) -> u32 {
+    if max_line_len == 0 || lines == 0 {
+        return 1;
+    }
+    let max_w = (size.width as f32 * 0.8) / (max_line_len as f32 * 8.0);
+    let max_h = (size.height as f32 * 0.8) / (lines as f32 * 8.0);
+    (max_w.min(max_h).floor() as i64).clamp(1, 64) as u32
+}
+
+/// Draw the centered label (if any) onto an existing image. The label may span
+/// multiple lines (split on `\n`); lines are stacked and each is centered.
 fn draw_label(
     img: &mut RgbaImage,
     size: Size,
@@ -301,21 +322,28 @@ fn draw_label(
     text: Option<&str>,
     scale: Option<u32>,
 ) {
-    if let Some(t) = text {
-        if !t.is_empty() {
-            let s = scale.unwrap_or_else(|| auto_scale(size, t.chars().count() as u32));
-            draw_text_centered(img, t, fg, s.max(1));
-        }
+    let Some(t) = text else { return };
+    if t.is_empty() {
+        return;
+    }
+    let lines = split_label(t);
+    let max_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u32;
+    let s = scale
+        .unwrap_or_else(|| auto_scale_block(size, max_len, lines.len() as u32))
+        .max(1);
+
+    let block_h = lines.len() as i64 * 8 * s as i64;
+    let oy = (img.height() as i64 - block_h) / 2;
+    for (i, line) in lines.iter().enumerate() {
+        draw_line_centered(img, line, fg, s, oy + i as i64 * 8 * s as i64);
     }
 }
 
-/// Draw `text` centered using the 8x8 bitmap font, scaled by `scale`.
-fn draw_text_centered(img: &mut RgbaImage, text: &str, fg: Rgba<u8>, scale: u32) {
+/// Draw one line horizontally centered at the given top `y`, using the 8x8 font.
+fn draw_line_centered(img: &mut RgbaImage, text: &str, fg: Rgba<u8>, scale: u32, oy: i64) {
     let chars: Vec<char> = text.chars().collect();
     let text_w = chars.len() as i64 * 8 * scale as i64;
-    let text_h = 8 * scale as i64;
     let ox = (img.width() as i64 - text_w) / 2;
-    let oy = (img.height() as i64 - text_h) / 2;
 
     for (ci, &ch) in chars.iter().enumerate() {
         let glyph = glyph_for(ch);
@@ -451,6 +479,58 @@ mod tests {
         );
         assert!(big >= small);
         assert!(small >= 1);
+    }
+
+    #[test]
+    fn split_label_breaks_on_backslash_n_and_newlines() {
+        assert_eq!(split_label("one"), vec!["one"]);
+        assert_eq!(split_label("a\\nb"), vec!["a", "b"]); // literal backslash-n
+        assert_eq!(split_label("a\nb"), vec!["a", "b"]); // real newline
+        assert_eq!(split_label("a\\nb\nc"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn auto_scale_block_accounts_for_line_count() {
+        // Two lines get a smaller scale than one line for the same image height.
+        let one = auto_scale_block(
+            Size {
+                width: 400,
+                height: 100,
+            },
+            4,
+            1,
+        );
+        let two = auto_scale_block(
+            Size {
+                width: 400,
+                height: 100,
+            },
+            4,
+            2,
+        );
+        assert!(two <= one);
+        assert!(two >= 1);
+    }
+
+    #[test]
+    fn render_multiline_label_draws_both_lines() {
+        // A tall image with a two-line label: foreground pixels appear in both
+        // the top and bottom halves.
+        let s = Size {
+            width: 120,
+            height: 120,
+        };
+        let img = render(
+            s,
+            Rgba([0, 0, 0, 255]),
+            Rgba([255, 255, 255, 255]),
+            Some("HELLO\\nWORLD"),
+            None,
+        );
+        let fg = Rgba([255, 255, 255, 255]);
+        let top = (0..60).any(|y| (0..120).any(|x| *img.get_pixel(x, y) == fg));
+        let bottom = (60..120).any(|y| (0..120).any(|x| *img.get_pixel(x, y) == fg));
+        assert!(top && bottom);
     }
 
     #[test]
