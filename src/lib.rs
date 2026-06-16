@@ -175,6 +175,64 @@ pub fn render_checker(
     img
 }
 
+/// Blend two colors: `t` = 0 returns `a`, `t` = 1 returns `b`.
+pub fn lerp_color(a: Rgba<u8>, b: Rgba<u8>, t: f32) -> Rgba<u8> {
+    let t = t.clamp(0.0, 1.0);
+    let mix = |x: u8, y: u8| -> u8 {
+        (x as f32 + (y as f32 - x as f32) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    Rgba([
+        mix(a.0[0], b.0[0]),
+        mix(a.0[1], b.0[1]),
+        mix(a.0[2], b.0[2]),
+        mix(a.0[3], b.0[3]),
+    ])
+}
+
+/// Render a placeholder with diagonal stripes (`bg` + a derived shade) and the
+/// centered label. `cell` is the stripe width in pixels (auto when None).
+pub fn render_diag(
+    size: Size,
+    bg: Rgba<u8>,
+    fg: Rgba<u8>,
+    text: Option<&str>,
+    scale: Option<u32>,
+    cell: Option<u32>,
+) -> RgbaImage {
+    let alt = alt_color(bg);
+    let cell = cell
+        .filter(|&c| c > 0)
+        .unwrap_or_else(|| (size.width.min(size.height) / 12).max(6));
+    let mut img = RgbaImage::new(size.width, size.height);
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        let on = ((x + y) / cell).is_multiple_of(2);
+        *px = if on { bg } else { alt };
+    }
+    draw_label(&mut img, size, fg, text, scale);
+    img
+}
+
+/// Render a placeholder with a left-to-right gradient from `bg` to a derived
+/// shade, and the centered label.
+pub fn render_gradient(
+    size: Size,
+    bg: Rgba<u8>,
+    fg: Rgba<u8>,
+    text: Option<&str>,
+    scale: Option<u32>,
+) -> RgbaImage {
+    let alt = alt_color(bg);
+    let denom = (size.width.max(2) - 1) as f32;
+    let mut img = RgbaImage::new(size.width, size.height);
+    for (x, _y, px) in img.enumerate_pixels_mut() {
+        *px = lerp_color(bg, alt, x as f32 / denom);
+    }
+    draw_label(&mut img, size, fg, text, scale);
+    img
+}
+
 /// Draw the centered label (if any) onto an existing image.
 fn draw_label(
     img: &mut RgbaImage,
@@ -342,6 +400,41 @@ mod tests {
         assert!(light.0[0] < 200);
         let dark = alt_color(Rgba([20, 20, 20, 255]));
         assert!(dark.0[0] > 20);
+    }
+
+    #[test]
+    fn lerp_color_endpoints_and_middle() {
+        let a = Rgba([0, 0, 0, 255]);
+        let b = Rgba([100, 200, 50, 255]);
+        assert_eq!(lerp_color(a, b, 0.0), a);
+        assert_eq!(lerp_color(a, b, 1.0), b);
+        assert_eq!(lerp_color(a, b, 0.5), Rgba([50, 100, 25, 255]));
+    }
+
+    #[test]
+    fn render_gradient_spans_bg_to_alt() {
+        let s = Size {
+            width: 50,
+            height: 10,
+        };
+        let bg = Rgba([200, 200, 200, 255]);
+        let img = render_gradient(s, bg, Rgba([0, 0, 0, 255]), None, None);
+        // Left edge is the background; right edge is the derived alt color.
+        assert_eq!(*img.get_pixel(0, 0), bg);
+        assert_eq!(*img.get_pixel(49, 0), alt_color(bg));
+    }
+
+    #[test]
+    fn render_diag_uses_two_colors() {
+        let s = Size {
+            width: 40,
+            height: 40,
+        };
+        let bg = Rgba([200, 200, 200, 255]);
+        let img = render_diag(s, bg, Rgba([0, 0, 0, 255]), None, None, Some(4));
+        // Stripe index (x+y)/cell alternates: (0,0) is bg, (4,0) is alt.
+        assert_eq!(*img.get_pixel(0, 0), bg);
+        assert_eq!(*img.get_pixel(4, 0), alt_color(bg));
     }
 
     #[test]

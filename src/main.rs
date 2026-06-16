@@ -7,7 +7,8 @@ use clap::Parser;
 use image::DynamicImage;
 
 use placehold::{
-    default_filename, ext_for_output, parse_color, parse_size, render, render_checker, Size,
+    default_filename, ext_for_output, parse_color, parse_size, render, render_checker, render_diag,
+    render_gradient, Size,
 };
 
 /// Generate placeholder images locally (solid color + size label).
@@ -39,10 +40,10 @@ struct Cli {
     format: String,
 
     /// Background pattern.
-    #[arg(long, value_parser = ["solid", "checker"], default_value = "solid")]
+    #[arg(long, value_parser = ["solid", "checker", "diag", "gradient"], default_value = "solid")]
     pattern: String,
 
-    /// Checkerboard cell size in pixels (default: auto).
+    /// Checker/diagonal cell (stripe) size in pixels (default: auto).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=4096))]
     cell: Option<u32>,
 
@@ -89,10 +90,11 @@ fn main() -> Result<()> {
             )
         };
 
-        let img = if cli.pattern == "checker" {
-            render_checker(size, bg, fg, label.as_deref(), cli.scale, cli.cell)
-        } else {
-            render(size, bg, fg, label.as_deref(), cli.scale)
+        let img = match cli.pattern.as_str() {
+            "checker" => render_checker(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
+            "diag" => render_diag(size, bg, fg, label.as_deref(), cli.scale, cli.cell),
+            "gradient" => render_gradient(size, bg, fg, label.as_deref(), cli.scale),
+            _ => render(size, bg, fg, label.as_deref(), cli.scale),
         };
         let (path, ext) = resolve_output(&cli, size)?;
         save_image(&img, &path, &ext)
