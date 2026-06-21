@@ -23,7 +23,7 @@ generates them instantly and locally, naming each file by its size.
 cargo install --git https://github.com/printemps-tokyo/placehold
 ```
 
-Or download a prebuilt binary from the [Releases](https://github.com/printemps-tokyo/placehold/releases) page.
+Prebuilt binaries will be attached to the [Releases](https://github.com/printemps-tokyo/placehold/releases) page once a version is tagged.
 
 ## Usage
 
