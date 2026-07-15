@@ -19,11 +19,11 @@ struct Cli {
     #[arg(required = true)]
     sizes: Vec<String>,
 
-    /// Background color (hex, e.g. "959595" or "#abc").
+    /// Background color (3/4/6/8-digit hex, e.g. "959595", "#abc", "0000").
     #[arg(long, default_value = "959595")]
     bg: String,
 
-    /// Text/label color (hex).
+    /// Text/label color (3/4/6/8-digit hex).
     #[arg(long, default_value = "ffffff")]
     fg: String,
 

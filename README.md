@@ -31,6 +31,8 @@ Prebuilt binaries will be attached to the [Releases](https://github.com/printemp
 placehold 640x480                 # -> 640x480_959595.png
 placehold 100                     # square -> 100x100_959595.png
 placehold 515x230 --bg "#c8c8c8"  # custom background
+placehold 640x480 --bg 0000       # transparent background (png/webp)
+placehold 640x480 --bg "#00000080"         # semi-transparent background
 placehold 1200x630 --text "OGP"   # custom label
 placehold 600x400 --text "HELLO\nWORLD"    # multi-line label
 placehold 64 --no-text            # solid color only
@@ -54,7 +56,7 @@ is printed to stderr.
 | Option | Description |
 | --- | --- |
 | `<sizes>...` | One or more sizes: `WxH` (e.g. `640x480`) or `N` (meaning `NxN`) |
-| `--bg <hex>` | Background color, e.g. `959595` or `#abc` (default `959595`) |
+| `--bg <hex>` | Background color, e.g. `959595`, `#abc`, or `0000` (default `959595`) |
 | `--fg <hex>` | Label color (default `ffffff`) |
 | `--text <str>` | Override the centered label (use `\n` for multiple lines) |
 | `--no-text` | Draw a solid color with no label |
@@ -70,9 +72,23 @@ is printed to stderr.
 | `-o, --output <file>` | Output path (single size only) |
 | `--out-dir <dir>` | Directory to write into (default: current directory) |
 
-## Notes
+## Color formats
 
-- Colors accept 3- or 6-digit hex, with or without a leading `#`.
+Every color option (`--bg`, `--fg`, `--border-color`, `--shadow-color`) accepts
+hex with or without a leading `#`:
+
+| Form | Digits | Example | Meaning |
+| --- | --- | --- | --- |
+| RGB | 3 | `f00` | opaque, each digit doubled (`ff0000`) |
+| RGBA | 4 | `f00a` | with alpha, each digit doubled (`ff0000aa`) |
+| RRGGBB | 6 | `ff0000` | opaque |
+| RRGGBBAA | 8 | `ff000080` | with alpha |
+
+Alpha is kept in PNG and WebP output; JPEG has no alpha channel, so it is
+flattened when encoding. `--bg 0000` gives a fully transparent background —
+handy for UI mockups where only the label should show.
+
+## Notes
 - The label is rendered with the public-domain `font8x8` bitmap font and scaled
   to fit; pass `--scale` to fix it.
 - JPEG output drops the alpha channel; PNG keeps it.

@@ -68,21 +68,37 @@ pub fn ext_for_output(path: &std::path::Path) -> Result<String> {
     }
 }
 
-/// Parse a hex color ("#aabbcc", "aabbcc", "#abc", "abc") into opaque RGBA.
+/// Parse a hex color into RGBA, with or without a leading `#`.
+///
+/// Accepted digit counts:
+/// - 3 ("abc") and 6 ("aabbcc"): opaque RGB
+/// - 4 ("abcd") and 8 ("aabbccdd"): RGBA with an explicit alpha channel
+///
+/// Short forms expand each digit ("f00a" -> "ff0000aa"). Alpha survives in
+/// PNG/WebP output; JPEG flattens it when encoding.
 pub fn parse_color(input: &str) -> Result<Rgba<u8>> {
     let h = input.trim().strip_prefix('#').unwrap_or(input.trim());
+    if !h.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(anyhow!("invalid hex color: {input:?}"));
+    }
     let expanded = match h.len() {
-        3 => h.chars().flat_map(|c| [c, c]).collect::<String>(),
-        6 => h.to_string(),
+        3 | 4 => h.chars().flat_map(|c| [c, c]).collect::<String>(),
+        6 | 8 => h.to_string(),
         _ => return Err(anyhow!("invalid hex color: {input:?}")),
     };
+    // Default to fully opaque when no alpha digits were given.
+    let rgba = if expanded.len() == 6 {
+        format!("{expanded}ff")
+    } else {
+        expanded
+    };
     let val =
-        u32::from_str_radix(&expanded, 16).map_err(|_| anyhow!("invalid hex color: {input:?}"))?;
+        u32::from_str_radix(&rgba, 16).map_err(|_| anyhow!("invalid hex color: {input:?}"))?;
     Ok(Rgba([
+        ((val >> 24) & 0xff) as u8,
         ((val >> 16) & 0xff) as u8,
         ((val >> 8) & 0xff) as u8,
         (val & 0xff) as u8,
-        255,
     ]))
 }
 
@@ -102,7 +118,7 @@ pub fn default_filename(size: Size, bg_hex: Option<&str>, ext: &str) -> String {
 
 fn normalize_hex(hex: &str) -> String {
     let h = hex.trim().strip_prefix('#').unwrap_or(hex.trim());
-    if h.len() == 3 {
+    if h.len() == 3 || h.len() == 4 {
         h.chars()
             .flat_map(|c| [c, c])
             .collect::<String>()
@@ -478,6 +494,36 @@ mod tests {
     }
 
     #[test]
+    fn parse_color_alpha_forms() {
+        // 4-digit RGBA: each digit doubles, including alpha.
+        assert_eq!(parse_color("0000").unwrap(), Rgba([0, 0, 0, 0]));
+        assert_eq!(
+            parse_color("#f00a").unwrap(),
+            Rgba([0xff, 0x00, 0x00, 0xaa])
+        );
+        // 8-digit RRGGBBAA.
+        assert_eq!(
+            parse_color("aabbccdd").unwrap(),
+            Rgba([0xaa, 0xbb, 0xcc, 0xdd])
+        );
+        assert_eq!(
+            parse_color("#00000080").unwrap(),
+            Rgba([0x00, 0x00, 0x00, 0x80])
+        );
+        // 3- and 6-digit forms stay fully opaque.
+        assert_eq!(parse_color("abc").unwrap().0[3], 255);
+        assert_eq!(parse_color("aabbcc").unwrap().0[3], 255);
+        // Unsupported lengths are rejected.
+        assert!(parse_color("12").is_err());
+        assert!(parse_color("1234567").is_err());
+        assert!(parse_color("123456789").is_err());
+        // Non-hex digits are rejected even when the length matches, including
+        // a sign prefix that from_str_radix would otherwise accept.
+        assert!(parse_color("+abc12").is_err());
+        assert!(parse_color("ggggggga").is_err());
+    }
+
+    #[test]
     fn filename_default() {
         let s = Size {
             width: 515,
@@ -491,6 +537,11 @@ mod tests {
         assert_eq!(
             default_filename(s, Some("959595"), "png"),
             "515x230_959595.png"
+        );
+        // A short RGBA background expands the same way as RGB.
+        assert_eq!(
+            default_filename(s, Some("#f00a"), "png"),
+            "515x230_ff0000aa.png"
         );
     }
 
