@@ -59,8 +59,8 @@ is printed to stderr.
 | `--bg <hex>` | Background color, e.g. `959595`, `#abc`, or `0000` (default `959595`) |
 | `--fg <hex>` | Label color (default `ffffff`) |
 | `--text <str>` | Override the centered label (use `\n` for multiple lines) |
-| `--no-text` | Draw a solid color with no label |
-| `--format <png\|jpg\|webp>` | Output format (default `png`) |
+| `--no-text` | Draw a solid color with no label (conflicts with `--text`) |
+| `--format <png\|jpg\|jpeg\|webp>` | Output format (default `png`; `jpeg` is an alias for `jpg`) |
 | `--pattern <solid\|checker\|diag\|gradient>` | Background pattern (default `solid`) |
 | `--cell <n>` | Checker/diagonal cell (stripe) size in pixels (default: auto) |
 | `--radius <n>` | Rounded-corner radius in pixels (transparent corners; use png/webp) |

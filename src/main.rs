@@ -28,7 +28,7 @@ struct Cli {
     fg: String,
 
     /// Override the centered label (default: the dimensions, e.g. "640x480").
-    #[arg(long)]
+    #[arg(long, conflicts_with = "no_text")]
     text: Option<String>,
 
     /// Do not draw any label (solid color only).
@@ -36,7 +36,7 @@ struct Cli {
     no_text: bool,
 
     /// Output format / extension (used for default filenames).
-    #[arg(long, value_parser = ["png", "jpg", "webp"], default_value = "png")]
+    #[arg(long, value_parser = ["png", "jpg", "jpeg", "webp"], default_value = "png")]
     format: String,
 
     /// Background pattern.
@@ -99,7 +99,10 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    if cli.radius.is_some_and(|r| r > 0) && cli.format == "jpg" && cli.output.is_none() {
+    if cli.radius.is_some_and(|r| r > 0)
+        && matches!(cli.format.as_str(), "jpg" | "jpeg")
+        && cli.output.is_none()
+    {
         eprintln!(
             "placehold: note: --radius needs alpha; jpg corners will be opaque (use png/webp)"
         );
