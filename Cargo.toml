@@ -1,10 +1,10 @@
 [package]
 name = "placehold"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
-description = "Generate placeholder images locally — solid color with the size label. Fast Rust CLI."
+description = "Generate placeholder images locally — solid color with the size label, in any TrueType/OpenType font, as PNG, JPEG, WebP or SVG. Fast Rust CLI."
 authors = ["printemps.tokyo <develop@printemps.tokyo>"]
 repository = "https://github.com/printemps-tokyo/placehold"
 homepage = "https://github.com/printemps-tokyo/placehold"
@@ -21,6 +21,7 @@ name = "placehold"
 path = "src/lib.rs"
 
 [dependencies]
+ab_glyph = "0.2.32"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 font8x8 = "0.3"

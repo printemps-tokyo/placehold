@@ -5,6 +5,9 @@
 //! pure Rust with the `image` crate and the public-domain `font8x8` bitmap
 //! font, so there is no external service and no ImageMagick dependency.
 
+pub mod font;
+pub mod svg;
+
 use anyhow::{anyhow, Result};
 use font8x8::legacy::BASIC_LEGACY;
 use image::{Rgba, RgbaImage};
@@ -53,16 +56,16 @@ pub fn parse_size(input: &str) -> Result<Size> {
 }
 
 /// Validate and normalize an output file extension to a supported format.
-/// Returns "png", "jpg", or "jpeg" (lowercased); errors otherwise.
+/// Returns "png", "jpg", "jpeg", "webp" or "svg" (lowercased); errors otherwise.
 pub fn ext_for_output(path: &std::path::Path) -> Result<String> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase());
     match ext.as_deref() {
-        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") => Ok(ext.unwrap()),
+        Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("svg") => Ok(ext.unwrap()),
         Some(other) => Err(anyhow!(
-            "unsupported output extension: .{other} (use .png/.jpg/.webp)"
+            "unsupported output extension: .{other} (use .png/.jpg/.webp/.svg)"
         )),
         None => Err(anyhow!("output path has no extension: {}", path.display())),
     }

@@ -6,6 +6,8 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use image::DynamicImage;
 
+use placehold::font::{LabelFont, MAX_FONT_PX};
+use placehold::svg::{self, Pattern, SvgSpec};
 use placehold::{
     apply_border, apply_radius, default_filename, draw_shadowed_label, ext_for_output, parse_color,
     parse_size, render, render_checker, render_diag, render_gradient, Size,
@@ -36,8 +38,23 @@ struct Cli {
     no_text: bool,
 
     /// Output format / extension (used for default filenames).
-    #[arg(long, value_parser = ["png", "jpg", "jpeg", "webp"], default_value = "png")]
+    #[arg(long, value_parser = ["png", "jpg", "jpeg", "webp", "svg"], default_value = "png")]
     format: String,
+
+    /// Draw the label with this TrueType/OpenType font (.ttf/.otf; the first
+    /// face of a .ttc). SVG output embeds it.
+    #[arg(long, value_name = "FILE")]
+    font: Option<PathBuf>,
+
+    /// Label size in pixels per em, as CSS font-size (default: chosen to
+    /// fit). Needs --font or SVG output; the built-in font uses --scale.
+    #[arg(long, value_name = "PX", conflicts_with = "scale",
+          value_parser = clap::value_parser!(u32).range(1..=1024))]
+    font_size: Option<u32>,
+
+    /// CSS font-family for the SVG label when no --font is embedded.
+    #[arg(long, value_name = "LIST", default_value = "sans-serif")]
+    font_family: String,
 
     /// Background pattern.
     #[arg(long, value_parser = ["solid", "checker", "diag", "gradient"], default_value = "solid")]
@@ -67,7 +84,8 @@ struct Cli {
     #[arg(long)]
     shadow_color: Option<String>,
 
-    /// Fixed text scale (default: chosen automatically to fit).
+    /// Fixed text scale of the built-in 8x8 font (default: chosen to fit);
+    /// with --font or SVG output, a size of 8 x scale pixels.
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=256))]
     scale: Option<u32>,
 
@@ -115,6 +133,50 @@ fn main() -> Result<()> {
         return Err(anyhow!("--output and --out-dir cannot be used together"));
     }
 
+    let font = match &cli.font {
+        Some(path) => Some(LabelFont::load(path)?),
+        None => None,
+    };
+    let vector = wants_svg(&cli);
+    if cli.font_size.is_some() && font.is_none() && !vector {
+        return Err(anyhow!(
+            "--font-size sizes a --font or SVG label; the built-in 8x8 font uses --scale"
+        ));
+    }
+    if (font.is_some() || vector) && cli.scale.is_some_and(|s| s > 128) {
+        return Err(anyhow!(
+            "with --font or SVG output, --scale is at most 128 (8 x 128 = 1024 pixels)"
+        ));
+    }
+    let font_px = cli
+        .font_size
+        .map(|p| p as f32)
+        .or(cli.scale.map(|s| (s * 8) as f32))
+        .map(|p| p.min(MAX_FONT_PX));
+    if let Some(text) = &cli.text {
+        match &font {
+            Some(f) => {
+                let missing = f.missing_chars(&text.replace("\\n", "\n"));
+                if !missing.is_empty() {
+                    eprintln!(
+                        "placehold: note: the font has no glyph for {}",
+                        missing
+                            .iter()
+                            .map(|c| format!("{c:?}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    );
+                }
+            }
+            None if !text.is_ascii() && !vector => {
+                eprintln!(
+                    "placehold: note: the built-in 8x8 font draws ASCII only; pass --font FILE for other characters"
+                );
+            }
+            None => {}
+        }
+    }
+
     if let Some(dir) = &cli.out_dir {
         std::fs::create_dir_all(dir)
             .with_context(|| format!("failed to create {}", dir.display()))?;
@@ -132,6 +194,38 @@ fn main() -> Result<()> {
             )
         };
 
+        let (path, ext) = resolve_output(&cli, size)?;
+        if ext == "svg" {
+            let doc = svg::render(&SvgSpec {
+                size,
+                bg,
+                fg,
+                pattern: match cli.pattern.as_str() {
+                    "checker" => Pattern::Checker,
+                    "diag" => Pattern::Diag,
+                    "gradient" => Pattern::Gradient,
+                    _ => Pattern::Solid,
+                },
+                cell: cli.cell,
+                radius: cli.radius,
+                border: cli.border.map(|t| (t, border_color)),
+                shadow: shadow_color,
+                label: label.as_deref(),
+                font_px,
+                font_family: &cli.font_family,
+                embed: font.as_ref(),
+            });
+            std::fs::write(&path, doc)
+                .with_context(|| format!("failed to write {}", path.display()))?;
+            eprintln!(
+                "placehold: wrote {} ({}x{})",
+                path.display(),
+                size.width,
+                size.height
+            );
+            continue;
+        }
+
         // Render the background without the label, then draw the label so an
         // optional drop shadow can sit under the text.
         let mut img = match cli.pattern.as_str() {
@@ -140,21 +234,25 @@ fn main() -> Result<()> {
             "gradient" => render_gradient(size, bg, fg, None, cli.scale),
             _ => render(size, bg, fg, None, cli.scale),
         };
-        draw_shadowed_label(
-            &mut img,
-            size,
-            fg,
-            shadow_color,
-            label.as_deref(),
-            cli.scale,
-        );
+        match (&font, label.as_deref()) {
+            (Some(f), Some(text)) if !text.is_empty() => {
+                f.draw(&mut img, size, fg, shadow_color, text, font_px)
+            }
+            _ => draw_shadowed_label(
+                &mut img,
+                size,
+                fg,
+                shadow_color,
+                label.as_deref(),
+                cli.scale,
+            ),
+        }
         if let Some(t) = cli.border {
             apply_border(&mut img, t, border_color);
         }
         if let Some(r) = cli.radius {
             apply_radius(&mut img, r);
         }
-        let (path, ext) = resolve_output(&cli, size)?;
         save_image(&img, &path, &ext)
             .with_context(|| format!("failed to write {}", path.display()))?;
         eprintln!(
@@ -166,6 +264,14 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Whether this run writes SVG (by --output extension or --format).
+fn wants_svg(cli: &Cli) -> bool {
+    match &cli.output {
+        Some(out) => ext_for_output(out).is_ok_and(|e| e == "svg"),
+        None => cli.format == "svg",
+    }
 }
 
 /// Resolve the output path and the encoder extension for one size.
