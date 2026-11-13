@@ -23,7 +23,8 @@ generates them instantly and locally, naming each file by its size.
 cargo install --git https://github.com/printemps-tokyo/placehold
 ```
 
-Prebuilt binaries will be attached to the [Releases](https://github.com/printemps-tokyo/placehold/releases) page once a version is tagged.
+Tagged [releases](https://github.com/printemps-tokyo/placehold/releases) carry prebuilt binaries for Linux (x86_64)
+and macOS (x86_64, Apple silicon), with SHA-256 checksums.
 
 ## Usage
 
